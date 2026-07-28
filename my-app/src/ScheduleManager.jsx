@@ -92,7 +92,7 @@ export default function ScheduleManager({ isAdmin }) {
   // פונקציית מחיקת שיבוץ מתחנה
   const handleDeleteSchedule = async (scheduleId) => {
     try {
-      await axios.delete(`/schedules/${scheduleId}`);
+      await api.delete(`/schedules/${scheduleId}`);
       fetchData(); // רענון הטבלה
     } catch (error) {
       alert('שגיאה במחיקת השיבוץ');
@@ -245,7 +245,7 @@ export default function ScheduleManager({ isAdmin }) {
                   {absences
                     .filter(a => a.start_date <= day && a.end_date >= day)
                     .map(absence => (
-                      <div key={absence.id} style={{ background: 'white', border: '1px solid #ffcdd2', padding: '5px', borderRadius: '4px', marginBottom: '5px', fontSize: '14px', textAlign: 'right' }}>
+                      <div key={absence.id} style={{ background: 'white', border: '1px solid '#ffcdd2', padding: '5px', borderRadius: '4px', marginBottom: '5px', fontSize: '14px', textAlign: 'right' }}>
                         <strong>{getStaffName(absence.staff_id)}</strong><br/>
                         <span style={{ fontSize: '12px', color: '#c62828' }}>{absence.status_type}</span>
                       </div>
