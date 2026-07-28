@@ -239,7 +239,7 @@ def create_staff(staff: StaffCreate, db: Session = Depends(get_db)):
     db.refresh(new_staff)
     return new_staff
 
-@@app.post("/staff/upload")
+@app.post("/staff/upload")
 async def upload_staff_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be a CSV")
