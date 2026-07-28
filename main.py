@@ -184,9 +184,14 @@ class DashboardStats(BaseModel):
 # ----------------- 3. אתחול FastAPI והגדרת CORS -----------------
 app = FastAPI(title="Soroka Women's Division Staff Management")
 
+origins = [
+    "https://my-app-psi-gold-76.vercel.app",
+    "http://localhost:3000", # for local development
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Using a wildcard for debugging
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -204,7 +209,7 @@ def get_db():
 
 @app.get("/")
 def read_root():
-    return {"message": "Deployment test successful - new version is live!"}
+    return {"message": "מערכת ניהול צוות סורוקה פועלת בהצלחה!"}
 
 
 # --- פעולות צוות (Staff) ---
