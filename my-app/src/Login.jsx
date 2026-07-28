@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from './api';
 
 export default function Login({ onLogin }) {
   const [userId, setUserId] = useState('');
@@ -11,7 +11,7 @@ export default function Login({ onLogin }) {
   useEffect(() => {
     const fetchStaff = async () => {
       try {
-        const response = await axios.get('http://127.0.0.1:8000/staff/');
+        const response = await api.get('/staff/');
         setStaffList(response.data);
       } catch (err) {
         console.error('שגיאה בטעינת נתונים', err);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from './api';
 
 export default function StaffManager() {
   // שמירת רשימת אנשי הצוות
@@ -18,7 +18,7 @@ export default function StaffManager() {
   // פונקציה לשליפת הנתונים מהשרת (FastAPI)
   const fetchStaff = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/staff/');
+      const response = await api.get('/staff/');
       setStaffList(response.data);
     } catch (error) {
       console.error('שגיאה בשליפת נתונים:', error);
@@ -42,7 +42,7 @@ export default function StaffManager() {
   const handleSubmit = async (e) => {
     e.preventDefault(); // מונע מהדף להתרענן
     try {
-      await axios.post('http://127.0.0.1:8000/staff/', formData);
+      await api.post('/staff/', formData);
       alert('איש צוות נוסף בהצלחה!');
       fetchStaff(); // רענון הטבלה כדי לראות את איש הצוות החדש
 
@@ -52,6 +52,18 @@ export default function StaffManager() {
       });
     } catch (error) {
       alert('שגיאה בהוספת איש צוות: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  // פונקציה למחיקת איש צוות לפי תעודת זהות
+  const handleDelete = async (id) => {
+    if (!window.confirm('האם אתה בטוח שברצונך למחוק איש צוות זה?')) return;
+    try {
+      await api.delete(`/staff/${id}`);
+      alert('איש צוות נמחק בהצלחה');
+      fetchStaff(); // רענון הטבלה
+    } catch (error) {
+      alert('שגיאה במחיקת איש צוות: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -92,6 +104,7 @@ export default function StaffManager() {
             <th style={{ padding: '8px' }}>תפקיד</th>
             <th style={{ padding: '8px' }}>טלפון</th>
             <th style={{ padding: '8px' }}>דוא"ל</th>
+            <th style={{ padding: '8px', textAlign: 'center' }}>פעולות</th>
           </tr>
         </thead>
         <tbody>
@@ -102,6 +115,23 @@ export default function StaffManager() {
               <td style={{ padding: '8px' }}>{staff.role}</td>
               <td style={{ padding: '8px' }}>{staff.phone}</td>
               <td style={{ padding: '8px' }}>{staff.email}</td>
+              <td style={{ padding: '8px', textAlign: 'center' }}>
+                <button
+                  onClick={() => handleDelete(staff.id)}
+                  style={{
+                    background: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold'
+                  }}
+                  title="הסר איש צוות"
+                >
+                  ✕
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

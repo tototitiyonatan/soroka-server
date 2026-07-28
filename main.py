@@ -184,7 +184,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.delete("/staff/{staff_id}")
+def delete_staff(staff_id: str, db: Session = Depends(get_db)):
+    staff_member = db.query(Staff).filter(Staff.id == staff_id).first()
+    if not staff_member:
+        raise HTTPException(status_code=404, detail="איש הצוות לא נמצא")
 
+    db.delete(staff_member)
+    db.commit()
+    return {"message": "איש הצוות נמחק בהצלחה"}
 def get_db():
     db = SessionLocal()
     try:

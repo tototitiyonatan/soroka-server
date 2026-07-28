@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from './api';
 
 export default function AbsenceManager() {
   const [absencesList, setAbsencesList] = useState([]);
@@ -28,7 +28,7 @@ export default function AbsenceManager() {
 
   const fetchStaff = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/staff/');
+      const response = await api.get('/staff/');
       setStaffList(response.data);
       if (response.data.length > 0) {
         setFormData(prev => ({ ...prev, staff_id: response.data[0].id }));
@@ -40,7 +40,7 @@ export default function AbsenceManager() {
 
   const fetchAbsences = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/absences/');
+      const response = await api.get('/absences/');
       setAbsencesList(response.data);
     } catch (error) {
       console.error('שגיאה בשליפת היעדרויות:', error);
@@ -54,7 +54,7 @@ export default function AbsenceManager() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('http://127.0.0.1:8000/absences/', formData);
+      await api.post('/absences/', formData);
       alert('היעדרות נרשמה בהצלחה!');
       fetchAbsences();
       setFormData(prev => ({
@@ -72,7 +72,7 @@ export default function AbsenceManager() {
   const handleDelete = async (id) => {
     if (!window.confirm('האם אתה בטוח שברצונך למחוק היעדרות זו?')) return;
     try {
-      await axios.delete(`http://127.0.0.1:8000/absences/${id}`);
+      await axios.delete(`/absences/${id}`);
       alert('ההיעדרות נמחקה בהצלחה!');
       fetchAbsences(); // רענון הטבלה
     } catch (error) {
