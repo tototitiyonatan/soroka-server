@@ -322,8 +322,13 @@ def delete_schedule(schedule_id: int, db: Session = Depends(get_db)):
     if not schedule:
         raise HTTPException(status_code=404, detail="השיבוץ לא נמצא")
 
-    db.delete(schedule)
-    db.commit()
+    try:
+        db.delete(schedule)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"שגיאה במחיקת השיבוץ: {str(e)}")
+
     return {"message": "השיבוץ נמחק בהצלחה"}
 
 
