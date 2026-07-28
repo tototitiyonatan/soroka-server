@@ -392,38 +392,56 @@ def create_station(station: StationCreate, db: Session = Depends(get_db)):
 def get_all_stations(db: Session = Depends(get_db)):
     return db.query(Station).all()
 
+import re
+
 @app.post("/intern-stages/upload")
 async def upload_intern_stages(file: UploadFile = File(...), db: Session = Depends(get_db)):
     contents = await file.read()
+
     try:
-        df = pd.read_excel(io.BytesIO(contents))
+        raw_df = pd.read_excel(io.BytesIO(contents), header=None)
     except Exception:
         try:
-            df = pd.read_csv(io.BytesIO(contents), dtype=str, encoding="utf-8-sig")
+            raw_df = pd.read_csv(io.BytesIO(contents), dtype=str, encoding="utf-8-sig", header=None)
         except UnicodeDecodeError:
-            df = pd.read_csv(io.BytesIO(contents), dtype=str, encoding="cp1255")
+            raw_df = pd.read_csv(io.BytesIO(contents), dtype=str, encoding="cp1255", header=None)
 
-    year_col, month_col = df.columns[0], df.columns[1]
-    name_columns = df.columns[2:]
+    names_row = raw_df.iloc[0]      # שורה 1: שמות
+    ids_row = raw_df.iloc[1]        # שורה 2: תעודות זהות
+    data_rows = raw_df.iloc[2:]     # שורה 3 ואילך: נתונים
 
-    all_staff = db.query(Staff).all()
-    name_to_id = {f"{s.first_name} {s.last_name}".strip(): s.id for s in all_staff}
+    year_col_idx, month_col_idx = 0, 1
+    all_staff_ids = {s.id for s in db.query(Staff).all()}
+
+    # ממפה אינדקס עמודה -> ת"ז (מנקה .0 אם excel המר למספר)
+    column_to_id = {}
+    for col_idx in range(2, len(names_row)):
+        raw_id = ids_row[col_idx]
+        if pd.isna(raw_id):
+            continue
+        staff_id = str(raw_id).strip()
+        if staff_id.endswith(".0"):
+            staff_id = staff_id[:-2]
+        column_to_id[col_idx] = staff_id
 
     added, unmatched = 0, set()
 
-    for _, row in df.iterrows():
-        if pd.isna(row[year_col]) or pd.isna(row[month_col]):
+    for _, row in data_rows.iterrows():
+        year_val = row[year_col_idx]
+        month_val = row[month_col_idx]
+        if pd.isna(year_val) or pd.isna(month_val):
             continue
-        year = int(row[year_col])
-        month = int(row[month_col])
-        for col in name_columns:
-            value = row[col]
+        year = int(float(year_val))
+        month = int(float(month_val))
+
+        for col_idx, staff_id in column_to_id.items():
+            value = row[col_idx]
             if pd.isna(value) or str(value).strip() == "":
                 continue
-            staff_id = name_to_id.get(str(col).strip())
-            if not staff_id:
-                unmatched.add(str(col).strip())
+            if staff_id not in all_staff_ids:
+                unmatched.add(f"{names_row[col_idx]} ({staff_id})")
                 continue
+
             db.query(InternStage).filter(
                 InternStage.staff_id == staff_id,
                 InternStage.year == year,
@@ -433,8 +451,7 @@ async def upload_intern_stages(file: UploadFile = File(...), db: Session = Depen
             added += 1
 
     db.commit()
-    return {"message": f"נטענו {added} רשומות שלב", "unmatched_names": list(unmatched)}
-
+    return {"message": f"נטענו {added} רשומות שלב", "unmatched": list(unmatched)}
 
 @app.get("/intern-stages/", response_model=List[InternStageResponse])
 def get_intern_stages(db: Session = Depends(get_db)):
