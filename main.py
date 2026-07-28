@@ -204,7 +204,7 @@ def get_db():
 
 @app.get("/")
 def read_root():
-    return {"message": "מערכת ניהול צוות סורוקה פועלת בהצלחה!"}
+    return {"message": "Deployment test successful - new version is live!"}
 
 
 # --- פעולות צוות (Staff) ---
