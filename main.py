@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlalchemy import create_engine, Column, Integer, String, Date, ForeignKey, Text
@@ -90,6 +90,13 @@ class StaffBase(BaseModel):
 
 class StaffCreate(StaffBase):
     pass
+
+class StaffUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    role: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
 
 
 class StaffResponse(StaffBase):
@@ -210,6 +217,44 @@ def create_staff(staff: StaffCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_staff)
     return new_staff
+
+@app.post("/staff/upload")
+async def upload_staff_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="File must be a CSV")
+
+    contents = await file.read()
+    df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+
+    added_count = 0
+    skipped_count = 0
+
+    for _, row in df.iterrows():
+        staff_data = StaffCreate(**row.to_dict())
+        if not db.query(Staff).filter(Staff.id == staff_data.id).first():
+            new_staff = Staff(**staff_data.model_dump())
+            db.add(new_staff)
+            added_count += 1
+        else:
+            skipped_count += 1
+    
+    db.commit()
+    return {"message": f"Added {added_count} new staff members. Skipped {skipped_count} existing members."}
+
+
+@app.put("/staff/{staff_id}", response_model=StaffResponse)
+def update_staff(staff_id: str, staff_update: StaffUpdate, db: Session = Depends(get_db)):
+    staff_member = db.query(Staff).filter(Staff.id == staff_id).first()
+    if not staff_member:
+        raise HTTPException(status_code=404, detail="איש הצוות לא נמצא")
+
+    update_data = staff_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(staff_member, key, value)
+    
+    db.commit()
+    db.refresh(staff_member)
+    return staff_member
 
 
 @app.get("/staff/", response_model=List[StaffResponse])

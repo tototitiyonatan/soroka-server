@@ -6,6 +6,7 @@ export default function ScheduleManager({ isAdmin }) {
   const [staff, setStaff] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [absences, setAbsences] = useState([]);
+  const [holidays, setHolidays] = useState({});
 
   const [newStationName, setNewStationName] = useState('');
   const [parentStationId, setParentStationId] = useState('');
@@ -42,7 +43,63 @@ export default function ScheduleManager({ isAdmin }) {
 
   useEffect(() => {
     fetchData();
+    fetchHolidays(currentWeekDays);
   }, [weekOffset]);
+
+  const fetchHolidays = async (days) => {
+    const newHolidays = {};
+    const firstDay = new Date(days[0]);
+    const lastDay = new Date(days[6]);
+    const months = new Set([firstDay.getMonth() + 1, lastDay.getMonth() + 1]);
+    const year = firstDay.getFullYear();
+
+    console.log(`Fetching holidays for months: ${[...months]} in year ${year}`);
+
+    const majorIslamicHolidays = [
+        "Eid al-Fitr", "Eid al-Adha", "Laylat al-Qadr", "Muharram", "Mawlid al-Nabi"
+    ];
+
+    // Fetch Hebrew holidays
+    for (const month of months) {
+        try {
+            const hebcalResponse = await fetch(`https://www.hebcal.com/hebcal?v=1&cfg=json&maj=on&year=${year}&month=${month}&geonameid=293397`);
+            const hebcalData = await hebcalResponse.json();
+            console.log("Hebcal API response for month", month, hebcalData);
+            if (hebcalData.items) {
+                hebcalData.items.forEach(event => {
+                    const eventDate = new Date(event.date).toISOString().split('T')[0];
+                    if (days.includes(eventDate)) {
+                        newHolidays[eventDate] = newHolidays[eventDate] ? `${newHolidays[eventDate]}, ${event.title}` : event.title;
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching Hebrew holidays:', error);
+        }
+    }
+
+    // Fetch Islamic holidays
+    for (const day of days) {
+        try {
+            const [y, m, d] = day.split('-');
+            const hijriResponse = await fetch(`https://api.aladhan.com/v1/gToH?date=${d}-${m}-${y}`);
+            const hijriData = await hijriResponse.json();
+            if (hijriData.data.hijri.holidays.length > 0) {
+                hijriData.data.hijri.holidays.forEach(holidayName => {
+                    if (majorIslamicHolidays.some(majorHoliday => holidayName.includes(majorHoliday))) {
+                        console.log("Found major Islamic holiday:", holidayName, "on", day);
+                        newHolidays[day] = newHolidays[day] ? `${newHolidays[day]}, ${holidayName}` : holidayName;
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching Islamic holidays:', error);
+        }
+    }
+
+    console.log("Final holidays object:", newHolidays);
+    setHolidays(newHolidays);
+  };
 
   const fetchData = async () => {
     try {
@@ -126,29 +183,29 @@ export default function ScheduleManager({ isAdmin }) {
   });
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 10px' }}>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', padding: '15px', background: '#f5f5f5', borderRadius: '8px' }}>
+      <div id="controls-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', padding: '15px', background: '#f5f5f5', borderRadius: '8px', flexWrap: 'wrap', gap: '15px' }}>
         {isAdmin ? (
-          <form onSubmit={handleAddStation} style={{ display: 'flex', gap: '10px' }}>
+          <form onSubmit={handleAddStation} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
             <input
               type="text"
               placeholder="שם התחנה החדשה..."
               value={newStationName}
               onChange={(e) => setNewStationName(e.target.value)}
-              style={{ padding: '8px' }}
+              style={{ padding: '8px', flex: '1 1 150px' }}
             />
             <select
               value={parentStationId}
               onChange={(e) => setParentStationId(e.target.value)}
-              style={{ padding: '8px' }}
+              style={{ padding: '8px', flex: '1 1 150px' }}
             >
               <option value="">-- זוהי תחנה ראשית --</option>
               {mainStations.map(station => (
                 <option key={station.id} value={station.id}>תת-תחנה של: {station.name}</option>
               ))}
             </select>
-            <button type="submit" style={{ padding: '8px 15px', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+            <button type="submit" style={{ padding: '8px 15px', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', flex: '1 1 100px' }}>
               הוסף תחנה
             </button>
           </form>
@@ -156,7 +213,7 @@ export default function ScheduleManager({ isAdmin }) {
           <div style={{ fontWeight: 'bold', color: '#666' }}>תצוגת מערכת קריאה בלבד</div>
         )}
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div id="action-buttons" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button onClick={exportToExcel} style={{ padding: '8px 15px', background: '#217346', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
             📊 ייצוא לאקסל
           </button>
@@ -166,27 +223,27 @@ export default function ScheduleManager({ isAdmin }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '20px', alignItems: 'center' }}>
-        <button onClick={() => setWeekOffset(prev => prev + 1)} style={{ padding: '5px 15px', cursor: 'pointer' }}>שבוע הבא ⬅️</button>
-        <h3 style={{ margin: 0 }}>שבוע: {formatDateToIL(currentWeekDays[0])} עד {formatDateToIL(currentWeekDays[6])}</h3>
-        <button onClick={() => setWeekOffset(prev => prev - 1)} style={{ padding: '5px 15px', cursor: 'pointer' }}>➡️ שבוע קודם</button>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <button onClick={() => setWeekOffset(prev => prev + 1)} style={{ padding: '5px 10px', cursor: 'pointer' }}>שבוע הבא ⬅️</button>
+        <h3 style={{ margin: 0, fontSize: '1.1em', textAlign: 'center' }}>שבוע: {formatDateToIL(currentWeekDays[0])} עד {formatDateToIL(currentWeekDays[6])}</h3>
+        <button onClick={() => setWeekOffset(prev => prev - 1)} style={{ padding: '5px 10px', cursor: 'pointer' }}>➡️ שבוע קודם</button>
       </div>
 
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', minWidth: '800px' }}>
           <thead>
             <tr style={{ background: '#3F51B5', color: 'white' }}>
-              <th rowSpan="2" style={{ padding: '15px', border: '1px solid #ddd', minWidth: '100px' }}>תאריך</th>
+              <th rowSpan="2" style={{ padding: '10px 5px', border: '1px solid #ddd', minWidth: '90px' }}>תאריך</th>
               {headerGroups.map(hg => (
-                <th key={hg.id} colSpan={hg.colSpan} style={{ padding: '10px', border: '1px solid #ddd' }}>
+                <th key={hg.id} colSpan={hg.colSpan} style={{ padding: '8px', border: '1px solid #ddd' }}>
                   {hg.name}
                 </th>
               ))}
-              <th rowSpan="2" style={{ padding: '15px', border: '1px solid #ddd', background: '#F44336', minWidth: '120px' }}>לא נמצא</th>
+              <th rowSpan="2" style={{ padding: '10px 5px', border: '1px solid #ddd', background: '#F44336', minWidth: '100px' }}>לא נמצא</th>
             </tr>
-            <tr style={{ background: '#5C6BC0', color: 'white', fontSize: '14px' }}>
+            <tr style={{ background: '#5C6BC0', color: 'white', fontSize: '13px' }}>
               {displayColumns.map(col => (
-                <th key={col.id} style={{ padding: '8px', border: '1px solid #ddd', fontWeight: 'normal' }}>
+                <th key={col.id} style={{ padding: '6px', border: '1px solid #ddd', fontWeight: 'normal' }}>
                   {col.parent_station_id ? col.name : 'ראשי'}
                 </th>
               ))}
@@ -196,21 +253,20 @@ export default function ScheduleManager({ isAdmin }) {
           <tbody>
             {currentWeekDays.map(day => (
               <tr key={day}>
-                <td style={{ padding: '10px', border: '1px solid #ddd', background: '#f9f9f9', fontWeight: 'bold' }}>
-                  {new Date(day + 'T00:00:00').toLocaleDateString('he-IL', { weekday: 'long' })}<br/>
-                  <span style={{ fontSize: '12px', color: '#666' }}>{formatDateToIL(day)}</span>
+                <td style={{ padding: '8px 5px', border: '1px solid #ddd', background: '#f9f9f9', fontWeight: 'bold', fontSize: '13px' }}>
+                  {new Date(day + 'T00:00:00').toLocaleDateString('he-IL', { weekday: 'short' })}<br/>
+                  <span style={{ fontSize: '11px', color: '#666' }}>{formatDateToIL(day)}</span>
+                  {holidays[day] && <div style={{ fontSize: '10px', color: 'darkblue' }}>{holidays[day]}</div>}
                 </td>
 
                 {displayColumns.map(station => {
                   const scheduledHere = schedules.filter(s => s.date === day && s.station_id === station.id);
 
                   return (
-                    <td key={station.id} style={{ padding: '10px', border: '1px solid #ddd', verticalAlign: 'top' }}>
+                    <td key={station.id} style={{ padding: '5px', border: '1px solid #ddd', verticalAlign: 'top' }}>
                       {scheduledHere.map(s => (
-                        <div key={s.id} style={{ background: '#E3F2FD', padding: '5px 8px', borderRadius: '4px', marginBottom: '5px', fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>{getStaffName(s.staff_id)}</span>
-
-                          {/* כפתור מחיקת שיבוץ שיוצג למנהל בלבד */}
+                        <div key={s.id} style={{ background: '#E3F2FD', padding: '4px', borderRadius: '4px', marginBottom: '4px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ flexShrink: 1 }}>{getStaffName(s.staff_id)}</span>
                           {isAdmin && (
                             <button
                               onClick={() => handleDeleteSchedule(s.id)}
@@ -241,13 +297,13 @@ export default function ScheduleManager({ isAdmin }) {
                   );
                 })}
 
-                <td style={{ padding: '10px', border: '1px solid #ddd', verticalAlign: 'top', background: '#ffebee' }}>
+                <td style={{ padding: '5px', border: '1px solid #ddd', verticalAlign: 'top', background: '#ffebee' }}>
                   {absences
                     .filter(a => a.start_date <= day && a.end_date >= day)
                     .map(absence => (
-                      <div key={absence.id} style={{ background: 'white', border: '1px solid #ffcdd2', padding: '5px', borderRadius: '4px', marginBottom: '5px', fontSize: '14px', textAlign: 'right' }}>
+                      <div key={absence.id} style={{ background: 'white', border: '1px solid #ffcdd2', padding: '4px', borderRadius: '4px', marginBottom: '4px', fontSize: '12px', textAlign: 'right' }}>
                         <strong>{getStaffName(absence.staff_id)}</strong><br/>
-                        <span style={{ fontSize: '12px', color: '#c62828' }}>{absence.status_type}</span>
+                        <span style={{ fontSize: '11px', color: '#c62828' }}>{absence.status_type}</span>
                       </div>
                   ))}
                 </td>
@@ -259,9 +315,30 @@ export default function ScheduleManager({ isAdmin }) {
 
       <style>{`
         @media print {
-          form, button, select { display: none !important; }
+          form, button, select, #controls-panel, #action-buttons { display: none !important; }
           body { -webkit-print-color-adjust: exact; }
           @page { size: landscape; }
+        }
+        @media (max-width: 768px) {
+          #controls-panel, #action-buttons {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          #controls-panel form {
+            flex-direction: column;
+            align-items: stretch;
+            width: 100%;
+          }
+          h3 {
+            font-size: 1em;
+          }
+          th, td {
+            padding: 5px !important;
+            font-size: 12px !important;
+          }
+          span, strong {
+            font-size: 11px !important;
+          }
         }
       `}</style>
     </div>
