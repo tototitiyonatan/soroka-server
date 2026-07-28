@@ -8,6 +8,7 @@ from typing import List, Optional
 from datetime import date
 import pandas as pd
 import io
+import os
 
 # ----------------- 1. הגדרת בסיס הנתונים (SQLAlchemy) -----------------
 SQLALCHEMY_DATABASE_URL = "sqlite:///./soroka_staff.db"
@@ -184,15 +185,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.delete("/staff/{staff_id}")
-def delete_staff(staff_id: str, db: Session = Depends(get_db)):
-    staff_member = db.query(Staff).filter(Staff.id == staff_id).first()
-    if not staff_member:
-        raise HTTPException(status_code=404, detail="איש הצוות לא נמצא")
 
-    db.delete(staff_member)
-    db.commit()
-    return {"message": "איש הצוות נמחק בהצלחה"}
+# --- פונקציית עזר למסד הנתונים (הועברה לכאן לפני השימוש בה) ---
 def get_db():
     db = SessionLocal()
     try:
@@ -223,6 +217,17 @@ def get_all_staff(db: Session = Depends(get_db)):
     return db.query(Staff).all()
 
 
+@app.delete("/staff/{staff_id}")
+def delete_staff(staff_id: str, db: Session = Depends(get_db)):
+    staff_member = db.query(Staff).filter(Staff.id == staff_id).first()
+    if not staff_member:
+        raise HTTPException(status_code=404, detail="איש הצוות לא נמצא")
+
+    db.delete(staff_member)
+    db.commit()
+    return {"message": "איש הצוות נמחק בהצלחה"}
+
+
 # --- פעולות היעדרויות (Absences) ---
 @app.post("/absences/", response_model=AbsenceResponse)
 def create_absence(absence: AbsenceCreate, db: Session = Depends(get_db)):
@@ -238,6 +243,17 @@ def create_absence(absence: AbsenceCreate, db: Session = Depends(get_db)):
 @app.get("/absences/", response_model=List[AbsenceResponse])
 def get_all_absences(db: Session = Depends(get_db)):
     return db.query(Absence).all()
+
+
+@app.delete("/absences/{absence_id}")
+def delete_absence(absence_id: int, db: Session = Depends(get_db)):
+    absence = db.query(Absence).filter(Absence.id == absence_id).first()
+    if not absence:
+        raise HTTPException(status_code=404, detail="ההיעדרות לא נמצאה")
+
+    db.delete(absence)
+    db.commit()
+    return {"message": "ההיעדרות נמחקה בהצלחה"}
 
 
 # --- פעולות תחנות (Stations) ---
@@ -294,6 +310,17 @@ def create_schedule(schedule: ScheduleCreate, db: Session = Depends(get_db)):
 @app.get("/schedules/", response_model=List[ScheduleResponse])
 def get_all_schedules(db: Session = Depends(get_db)):
     return db.query(Schedule).all()
+
+
+@app.delete("/schedules/{schedule_id}")
+def delete_schedule(schedule_id: int, db: Session = Depends(get_db)):
+    schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="השיבוץ לא נמצא")
+
+    db.delete(schedule)
+    db.commit()
+    return {"message": "השיבוץ נמחק בהצלחה"}
 
 
 # --- פעולות בקשות חופשה (Leave Requests) ---
@@ -427,28 +454,6 @@ def export_schedules_excel(start_date: date, end_date: date, db: Session = Depen
     )
 
 
-@app.delete("/absences/{absence_id}")
-def delete_absence(absence_id: int, db: Session = Depends(get_db)):
-    absence = db.query(Absence).filter(Absence.id == absence_id).first()
-    if not absence:
-        raise HTTPException(status_code=404, detail="ההיעדרות לא נמצאה")
-
-    db.delete(absence)
-    db.commit()
-    return {"message": "ההיעדרות נמחקה בהצלחה"}
-
-
-@app.delete("/schedules/{schedule_id}")
-def delete_schedule(schedule_id: int, db: Session = Depends(get_db)):
-    schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
-    if not schedule:
-        raise HTTPException(status_code=404, detail="השיבוץ לא נמצא")
-
-    db.delete(schedule)
-    db.commit()
-    return {"message": "השיבוץ נמחק בהצלחה"}
-
-import os
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
