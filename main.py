@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import create_engine, Column, Integer, String, Date, ForeignKey, Text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 from pydantic import BaseModel, field_validator, ConfigDict, ValidationInfo, Field
@@ -9,6 +12,7 @@ from datetime import date
 import pandas as pd
 import io
 import os
+
 
 # ----------------- 1. הגדרת בסיס הנתונים (SQLAlchemy) -----------------
 SQLALCHEMY_DATABASE_URL = "sqlite:///./soroka_staff.db"
@@ -186,7 +190,7 @@ app = FastAPI(title="Soroka Women's Division Staff Management")
 
 origins = [
     "https://my-app-psi-gold-76.vercel.app",
-    "http://localhost:3000", # for local development
+    "http://localhost:3000",
 ]
 
 app.add_middleware(
@@ -197,8 +201,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Global exception handler (add here) ---
+from fastapi.responses import JSONResponse
 
-# --- פונקציית עזר למסד הנתונים (הועברה לכאן לפני השימוש בה) ---
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request, exc):
+    response = JSONResponse(status_code=500, content={"detail": str(exc)})
+    origin = request.headers.get("origin")
+    if origin in origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
+
+# --- פונקציית עזר למסד הנתונים ---
 def get_db():
     db = SessionLocal()
     try:
@@ -223,29 +239,38 @@ def create_staff(staff: StaffCreate, db: Session = Depends(get_db)):
     db.refresh(new_staff)
     return new_staff
 
-@app.post("/staff/upload")
+@@app.post("/staff/upload")
 async def upload_staff_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be a CSV")
 
     contents = await file.read()
-    df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+    df = pd.read_csv(io.StringIO(contents.decode('utf-8')), dtype=str)  # force everything to str
+    df = df.where(pd.notnull(df), None)  # convert NaN -> None
 
     added_count = 0
     skipped_count = 0
+    errors = []
 
-    for _, row in df.iterrows():
-        staff_data = StaffCreate(**row.to_dict())
+    for idx, row in df.iterrows():
+        try:
+            staff_data = StaffCreate(**row.to_dict())
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+            continue
+
         if not db.query(Staff).filter(Staff.id == staff_data.id).first():
             new_staff = Staff(**staff_data.model_dump())
             db.add(new_staff)
             added_count += 1
         else:
             skipped_count += 1
-    
-    db.commit()
-    return {"message": f"Added {added_count} new staff members. Skipped {skipped_count} existing members."}
 
+    db.commit()
+    return {
+        "message": f"Added {added_count} new staff members. Skipped {skipped_count} existing members.",
+        "errors": errors
+    }
 
 @app.put("/staff/{staff_id}", response_model=StaffResponse)
 def update_staff(staff_id: str, staff_update: StaffUpdate, db: Session = Depends(get_db)):
