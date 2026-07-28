@@ -223,6 +223,10 @@ def delete_staff(staff_id: str, db: Session = Depends(get_db)):
     if not staff_member:
         raise HTTPException(status_code=404, detail="איש הצוות לא נמצא")
 
+    db.query(Absence).filter(Absence.staff_id == staff_id).delete()
+    db.query(Schedule).filter(Schedule.staff_id == staff_id).delete()
+    db.query(LeaveRequest).filter(LeaveRequest.staff_id == staff_id).delete()
+
     db.delete(staff_member)
     db.commit()
     return {"message": "איש הצוות נמחק בהצלחה"}
