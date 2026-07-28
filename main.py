@@ -78,6 +78,14 @@ class LeaveRequest(Base):
 
     staff = relationship("Staff")
 
+class InternStage(Base):
+    __tablename__ = "intern_stages"
+    id = Column(Integer, primary_key=True, index=True)
+    staff_id = Column(String, ForeignKey("staff.id"), nullable=False)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+    stage_name = Column(String, nullable=False)
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -101,6 +109,14 @@ class StaffUpdate(BaseModel):
     role: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+
+class InternStageResponse(BaseModel):
+    id: int
+    staff_id: str
+    year: int
+    month: int
+    stage_name: str
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StaffResponse(StaffBase):
@@ -370,6 +386,53 @@ def create_station(station: StationCreate, db: Session = Depends(get_db)):
 def get_all_stations(db: Session = Depends(get_db)):
     return db.query(Station).all()
 
+@app.post("/intern-stages/upload")
+async def upload_intern_stages(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    contents = await file.read()
+    try:
+        df = pd.read_excel(io.BytesIO(contents))
+    except Exception:
+        try:
+            df = pd.read_csv(io.BytesIO(contents), dtype=str, encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            df = pd.read_csv(io.BytesIO(contents), dtype=str, encoding="cp1255")
+
+    year_col, month_col = df.columns[0], df.columns[1]
+    name_columns = df.columns[2:]
+
+    all_staff = db.query(Staff).all()
+    name_to_id = {f"{s.first_name} {s.last_name}".strip(): s.id for s in all_staff}
+
+    added, unmatched = 0, set()
+
+    for _, row in df.iterrows():
+        if pd.isna(row[year_col]) or pd.isna(row[month_col]):
+            continue
+        year = int(row[year_col])
+        month = int(row[month_col])
+        for col in name_columns:
+            value = row[col]
+            if pd.isna(value) or str(value).strip() == "":
+                continue
+            staff_id = name_to_id.get(str(col).strip())
+            if not staff_id:
+                unmatched.add(str(col).strip())
+                continue
+            db.query(InternStage).filter(
+                InternStage.staff_id == staff_id,
+                InternStage.year == year,
+                InternStage.month == month
+            ).delete()
+            db.add(InternStage(staff_id=staff_id, year=year, month=month, stage_name=str(value).strip()))
+            added += 1
+
+    db.commit()
+    return {"message": f"נטענו {added} רשומות שלב", "unmatched_names": list(unmatched)}
+
+
+@app.get("/intern-stages/", response_model=List[InternStageResponse])
+def get_intern_stages(db: Session = Depends(get_db)):
+    return db.query(InternStage).all()
 
 # --- פעולות שיבוצים (Schedules) ---
 @app.post("/schedules/", response_model=ScheduleResponse)
