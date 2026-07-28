@@ -245,8 +245,20 @@ async def upload_staff_file(file: UploadFile = File(...), db: Session = Depends(
         raise HTTPException(status_code=400, detail="File must be a CSV")
 
     contents = await file.read()
-    df = pd.read_csv(io.StringIO(contents.decode('utf-8')), dtype=str)  # force everything to str
-    df = df.where(pd.notnull(df), None)  # convert NaN -> None
+
+    decoded = None
+    for encoding in ["utf-8-sig", "utf-8", "cp1255", "windows-1252", "latin-1"]:
+        try:
+            decoded = contents.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+
+    if decoded is None:
+        raise HTTPException(status_code=400, detail="לא ניתן לפענח את קובץ ה-CSV. שמור אותו כ-UTF-8 ונסה שוב")
+
+    df = pd.read_csv(io.StringIO(decoded), dtype=str)
+    df = df.where(pd.notnull(df), None)
 
     added_count = 0
     skipped_count = 0
