@@ -30,8 +30,8 @@ class Staff(Base):
     phone = Column(String)
     email = Column(String)
 
-    absences = relationship("Absence", back_populates="staff")
-    schedules = relationship("Schedule", back_populates="staff")
+    absences = relationship("Absence", back_populates="staff", cascade="all, delete-orphan")
+    schedules = relationship("Schedule", back_populates="staff", cascade="all, delete-orphan")
 
 
 class Station(Base):
@@ -40,7 +40,7 @@ class Station(Base):
     name = Column(String, nullable=False)
     parent_station_id = Column(Integer, ForeignKey("stations.id"), nullable=True)  # תמיכה בתת-תחנות
 
-    schedules = relationship("Schedule", back_populates="station")
+    schedules = relationship("Schedule", back_populates="station", cascade="all, delete-orphan")
 
 
 class Absence(Base):
@@ -310,13 +310,22 @@ def delete_staff(staff_id: str, db: Session = Depends(get_db)):
     if not staff_member:
         raise HTTPException(status_code=404, detail="איש הצוות לא נמצא")
 
-    db.query(Absence).filter(Absence.staff_id == staff_id).delete()
-    db.query(Schedule).filter(Schedule.staff_id == staff_id).delete()
-    db.query(LeaveRequest).filter(LeaveRequest.staff_id == staff_id).delete()
-
     db.delete(staff_member)
     db.commit()
     return {"message": "איש הצוות נמחק בהצלחה"}
+
+@app.delete("/staff/all")
+def delete_all_staff(db: Session = Depends(get_db)):
+    try:
+        db.query(Schedule).delete()
+        db.query(Absence).delete()
+        db.query(LeaveRequest).delete()
+        db.query(Staff).delete()
+        db.commit()
+        return {"message": "All staff and related records have been deleted."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 
 # --- פעולות היעדרויות (Absences) ---
