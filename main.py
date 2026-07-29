@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from sqlalchemy import create_engine, Column, Integer, String, Date, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, Date, ForeignKey, Text, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 from pydantic import BaseModel, field_validator, ConfigDict, ValidationInfo, Field
 from typing import List, Optional
@@ -35,6 +35,7 @@ class Staff(Base):
     role = Column(String, nullable=False)  # מנהל, מומחה, מתמחה
     phone = Column(String)
     email = Column(String)
+    training = Column(String, nullable=True)
 
     absences = relationship("Absence", back_populates="staff", cascade="all, delete-orphan")
     schedules = relationship("Schedule", back_populates="staff", cascade="all, delete-orphan")
@@ -96,6 +97,19 @@ class InternStage(Base):
 Base.metadata.create_all(bind=engine)
 
 
+def migrate_db():
+    inspector = inspect(engine)
+    if "staff" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("staff")}
+    if "training" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE staff ADD COLUMN training VARCHAR"))
+
+
+migrate_db()
+
+
 # ----------------- 2. הגדרת סכימות (Pydantic V2) -----------------
 class StaffBase(BaseModel):
     id: str
@@ -104,6 +118,7 @@ class StaffBase(BaseModel):
     role: str
     phone: Optional[str] = None
     email: Optional[str] = None
+    training: Optional[str] = None
 
 
 class StaffCreate(StaffBase):
@@ -115,6 +130,7 @@ class StaffUpdate(BaseModel):
     role: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    training: Optional[str] = None
 
 class InternStageResponse(BaseModel):
     id: int
