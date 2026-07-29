@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react';
 import api from './api';
+import { StaffName } from './staffDisplay';
+import {
+  TRAINING_OPTIONS,
+  parseTraining,
+  serializeTraining,
+  toggleTrainingOption,
+} from './staffTraining';
+import InternProgramSingle from './InternProgramSingle';
 
 export default function StaffManager() {
   const [staffList, setStaffList] = useState([]);
@@ -9,11 +17,14 @@ export default function StaffManager() {
     last_name: '',
     role: 'מתמחה',
     phone: '',
-    email: ''
+    email: '',
+    training: '',
   });
   const [editingId, setEditingId] = useState(null);
   const [editFormData, setEditFormData] = useState({});
   const [selectedFile, setSelectedFile] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewingIntern, setViewingIntern] = useState(null);
 
   const fetchStaff = async () => {
     try {
@@ -29,28 +40,35 @@ export default function StaffManager() {
   }, []);
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleEditChange = (e) => {
-    setEditFormData({
-      ...editFormData,
-      [e.target.name]: e.target.value
-    });
+    setEditFormData({ ...editFormData, [e.target.name]: e.target.value });
+  };
+
+  const buildStaffPayload = (data) => {
+    const payload = {
+      id: data.id,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      role: data.role,
+      phone: data.phone || null,
+      email: data.email || null,
+    };
+    if (data.role === 'מתמחה') {
+      payload.training = data.training || null;
+    }
+    return payload;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/staff/', formData);
+      await api.post('/staff/', buildStaffPayload(formData));
       alert('איש צוות נוסף בהצלחה!');
       fetchStaff();
-      setFormData({
-        id: '', first_name: '', last_name: '', role: 'מתמחה', phone: '', email: ''
-      });
+      setFormData({ id: '', first_name: '', last_name: '', role: 'מתמחה', phone: '', email: '', training: '' });
     } catch (error) {
       alert('שגיאה בהוספת איש צוות: ' + (error.response?.data?.detail || error.message));
     }
@@ -58,8 +76,9 @@ export default function StaffManager() {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
+    const { id, ...updateFields } = buildStaffPayload(editFormData);
     try {
-      await api.put(`/staff/${editingId}`, editFormData);
+      await api.put(`/staff/${editingId}`, updateFields);
       alert('פרטי איש צוות עודכנו בהצלחה!');
       setEditingId(null);
       fetchStaff();
@@ -92,7 +111,33 @@ export default function StaffManager() {
 
   const handleEditClick = (staff) => {
     setEditingId(staff.id);
-    setEditFormData(staff);
+    setEditFormData({
+      ...staff,
+      training: staff.role === 'מתמחה' ? (staff.training || '') : '',
+    });
+  };
+
+  const handleTrainingToggle = async (staffId, option, currentValue) => {
+    const next = serializeTraining(toggleTrainingOption(currentValue, option));
+    try {
+      await api.put(`/staff/${staffId}`, { training: next });
+      setStaffList((prev) =>
+        prev.map((s) => (s.id === staffId ? { ...s, training: next } : s))
+      );
+    } catch (error) {
+      alert('שגיאה בעדכון הכשרה: ' + (error.response?.data?.detail || error.message));
+      fetchStaff();
+    }
+  };
+
+  const handleFormTrainingToggle = (option, isEditing) => {
+    const current = isEditing ? editFormData.training : formData.training;
+    const next = serializeTraining(toggleTrainingOption(current, option)) || '';
+    if (isEditing) {
+      setEditFormData({ ...editFormData, training: next });
+    } else {
+      setFormData({ ...formData, training: next });
+    }
   };
 
   const handleFileChange = (event) => {
@@ -101,18 +146,16 @@ export default function StaffManager() {
 
   const handleFileUpload = async () => {
     if (!selectedFile) {
-      alert("Please select a file first.");
+      alert('Please select a file first.');
       return;
     }
 
     const uploadData = new FormData();
-    uploadData.append("file", selectedFile);
+    uploadData.append('file', selectedFile);
 
     try {
-      const response = await api.post("/staff/upload", uploadData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+      const response = await api.post('/staff/upload', uploadData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
       alert(response.data.message);
       fetchStaff();
@@ -121,120 +164,197 @@ export default function StaffManager() {
     }
   };
 
+  const filteredStaff = staffList.filter((s) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.trim().toLowerCase();
+    const training = s.training || '';
+    return (
+      s.id.includes(q) ||
+      s.first_name.toLowerCase().includes(q) ||
+      s.last_name.toLowerCase().includes(q) ||
+      s.role.toLowerCase().includes(q) ||
+      training.toLowerCase().includes(q) ||
+      (s.phone && s.phone.includes(q)) ||
+      (s.email && s.email.toLowerCase().includes(q))
+    );
+  });
+
+  const showTrainingField = editingId
+    ? editFormData.role === 'מתמחה'
+    : formData.role === 'מתמחה';
+
   return (
-    <div dir="rtl" style={{ fontFamily: 'Arial', padding: '15px', maxWidth: '800px', margin: '0 auto' }}>
-      <h2>ניהול אנשי צוות - חטיבת נשים</h2>
+    <div>
+      <h2 className="section-title">ניהול אנשי צוות</h2>
 
-      <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px', marginBottom: '20px' }}>
+      {viewingIntern && (
+        <div className="modal-overlay" onClick={() => setViewingIntern(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <InternProgramSingle staff={viewingIntern} onClose={() => setViewingIntern(null)} />
+          </div>
+        </div>
+      )}
+
+      <div className="card section-spacing">
         <h3>{editingId ? 'עריכת פרטי איש צוות' : 'הוספת איש צוות חדש'}</h3>
-        <form onSubmit={editingId ? handleUpdate : handleSubmit} style={{ display: 'grid', gap: '10px' }} id="staff-form">
-          <input type="text" name="id" placeholder="תעודת זהות" value={editingId ? editFormData.id : formData.id} onChange={editingId ? handleEditChange : handleChange} required disabled={editingId} style={{ padding: '8px' }} />
-          <input type="text" name="first_name" placeholder="שם פרטי" value={editingId ? editFormData.first_name : formData.first_name} onChange={editingId ? handleEditChange : handleChange} required style={{ padding: '8px' }} />
-          <input type="text" name="last_name" placeholder="שם משפחה" value={editingId ? editFormData.last_name : formData.last_name} onChange={editingId ? handleEditChange : handleChange} required style={{ padding: '8px' }} />
-
-          <select name="role" value={editingId ? editFormData.role : formData.role} onChange={editingId ? handleEditChange : handleChange} style={{ padding: '8px' }}>
-            <option value="מנהל">מנהל</option>
-            <option value="מומחה">מומחה</option>
-            <option value="מתמחה">מתמחה</option>
-          </select>
-
-          <input type="tel" name="phone" placeholder="טלפון" value={editingId ? editFormData.phone : formData.phone} onChange={editingId ? handleEditChange : handleChange} style={{ padding: '8px' }} />
-          <input type="email" name="email" placeholder="דואר אלקטרוני" value={editingId ? editFormData.email : formData.email} onChange={editingId ? handleEditChange : handleChange} style={{ padding: '8px' }} />
-
-          <button type="submit" style={{ padding: '10px', background: editingId ? '#28a745' : '#007BFF', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '16px' }}>
-            {editingId ? 'שמור שינויים' : 'הוסף איש צוות'}
-          </button>
-          {editingId && (
-            <button type="button" onClick={() => setEditingId(null)} style={{ padding: '10px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '16px' }}>
-              בטל
-            </button>
+        <form onSubmit={editingId ? handleUpdate : handleSubmit} className="form-grid">
+          <div className="form-group">
+            <label className="form-label">תעודת זהות</label>
+            <input type="text" name="id" className="form-input" placeholder="תעודת זהות" value={editingId ? editFormData.id : formData.id} onChange={editingId ? handleEditChange : handleChange} required disabled={editingId} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">שם פרטי</label>
+            <input type="text" name="first_name" className="form-input" placeholder="שם פרטי" value={editingId ? editFormData.first_name : formData.first_name} onChange={editingId ? handleEditChange : handleChange} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">שם משפחה</label>
+            <input type="text" name="last_name" className="form-input" placeholder="שם משפחה" value={editingId ? editFormData.last_name : formData.last_name} onChange={editingId ? handleEditChange : handleChange} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">תפקיד</label>
+            <select name="role" className="form-select" value={editingId ? editFormData.role : formData.role} onChange={editingId ? handleEditChange : handleChange}>
+              <option value="מומחה">מומחה</option>
+              <option value="מתמחה">מתמחה</option>
+            </select>
+          </div>
+          {showTrainingField && (
+            <div className="form-group full-width">
+              <label className="form-label">הכשרה</label>
+              <div className="training-checkboxes">
+                {TRAINING_OPTIONS.map((opt) => {
+                  const current = editingId ? editFormData.training : formData.training;
+                  const checked = parseTraining(current).includes(opt);
+                  return (
+                    <label key={opt} className="training-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => handleFormTrainingToggle(opt, Boolean(editingId))}
+                      />
+                      {opt}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           )}
+          <div className="form-group">
+            <label className="form-label">טלפון</label>
+            <input type="tel" name="phone" className="form-input" placeholder="טלפון" value={editingId ? editFormData.phone : formData.phone} onChange={editingId ? handleEditChange : handleChange} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">דואר אלקטרוני</label>
+            <input type="email" name="email" className="form-input" placeholder="דואר אלקטרוני" value={editingId ? editFormData.email : formData.email} onChange={editingId ? handleEditChange : handleChange} />
+          </div>
+          <div className="form-group full-width action-row">
+            <button type="submit" className={`btn ${editingId ? 'btn-success' : 'btn-primary'}`}>
+              {editingId ? 'שמור שינויים' : 'הוסף איש צוות'}
+            </button>
+            {editingId && (
+              <button type="button" className="btn btn-outline" onClick={() => setEditingId(null)}>
+                בטל
+              </button>
+            )}
+          </div>
         </form>
       </div>
 
-      <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px', marginBottom: '20px' }}>
-          <h3>העלאת קובץ CSV</h3>
+      <div className="card section-spacing">
+        <h3>העלאת קובץ CSV</h3>
+        <div className="action-row">
           <input type="file" onChange={handleFileChange} accept=".csv" />
-          <button onClick={handleFileUpload} style={{ padding: '10px', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '16px' }}>
+          <button onClick={handleFileUpload} className="btn btn-secondary">
             העלה קובץ
           </button>
+        </div>
       </div>
 
-      <div style={{ border: '1px solid #dc3545', padding: '15px', borderRadius: '5px', marginBottom: '20px' }}>
-          <h3>אזור סכנה</h3>
-          <button onClick={handleDeleteAll} style={{ padding: '10px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '16px' }}>
-            מחק את כל אנשי הצוות
-          </button>
+      <div className="card card-danger section-spacing">
+        <h3>אזור סכנה</h3>
+        <button onClick={handleDeleteAll} className="btn btn-danger">
+          מחק את כל אנשי הצוות
+        </button>
       </div>
 
       <h3>רשימת הצוות</h3>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right', minWidth: '600px' }} id="staff-table">
+      <div className="form-group section-spacing" style={{ maxWidth: '400px' }}>
+        <label className="form-label">חיפוש</label>
+        <input
+          type="search"
+          className="form-input"
+          placeholder="חפש לפי שם, ת.ז., תפקיד, הכשרה, טלפון..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+      <div className="table-wrapper">
+        <table className="data-table">
           <thead>
-            <tr style={{ background: '#f4f4f4', borderBottom: '2px solid #ddd' }}>
-              <th style={{ padding: '8px' }}>ת.ז</th>
-              <th style={{ padding: '8px' }}>שם מלא</th>
-              <th style={{ padding: '8px' }}>תפקיד</th>
-              <th style={{ padding: '8px' }}>טלפון</th>
-              <th style={{ padding: '8px' }}>דוא"ל</th>
-              <th style={{ padding: '8px', textAlign: 'center' }}>פעולות</th>
+            <tr>
+              <th>ת.ז</th>
+              <th>שם מלא</th>
+              <th>תפקיד</th>
+              <th>הכשרה</th>
+              <th>טלפון</th>
+              <th>דוא"ל</th>
+              <th style={{ textAlign: 'center' }}>פעולות</th>
             </tr>
           </thead>
           <tbody>
-            {staffList.map((staff) => (
-              <tr key={staff.id} style={{ borderBottom: '1px solid #ddd' }}>
-                <td style={{ padding: '8px' }}>{staff.id}</td>
-                <td style={{ padding: '8px' }}>{staff.first_name} {staff.last_name}</td>
-                <td style={{ padding: '8px' }}>{staff.role}</td>
-                <td style={{ padding: '8px' }}>{staff.phone}</td>
-                <td style={{ padding: '8px' }}>{staff.email}</td>
-                <td style={{ padding: '8px', textAlign: 'center' }}>
-                  <button onClick={() => handleEditClick(staff)} style={{ background: '#ffc107', color: 'black', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontWeight: 'bold', marginRight: '5px' }}>
-                    ערוך
-                  </button>
-                  <button
-                    onClick={() => handleDelete(staff.id)}
-                    style={{
-                      background: '#dc3545',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      padding: '4px 8px',
-                      cursor: 'pointer',
-                      fontWeight: 'bold'
-                    }}
-                    title="הסר איש צוות"
-                  >
-                    ✕
-                  </button>
+            {filteredStaff.map((staff) => (
+              <tr key={staff.id}>
+                <td>{staff.id}</td>
+                <td>
+                  {staff.role === 'מתמחה' ? (
+                    <button
+                      type="button"
+                      className="staff-name-link"
+                      onClick={() => setViewingIntern(staff)}
+                      title="לחץ לצפייה בתוכנית התמחות"
+                    >
+                      <StaffName person={staff} as="strong" />
+                    </button>
+                  ) : (
+                    <StaffName person={staff} as="strong" />
+                  )}
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> ({staff.first_name})</span>
+                </td>
+                <td><span className="badge badge-info">{staff.role}</span></td>
+                <td>
+                  {staff.role === 'מתמחה' ? (
+                    <div className="training-checkboxes training-checkboxes--compact">
+                      {TRAINING_OPTIONS.map((opt) => (
+                        <label key={opt} className="training-checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={parseTraining(staff.training).includes(opt)}
+                            onChange={() => handleTrainingToggle(staff.id, opt, staff.training)}
+                          />
+                          {opt}
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    '—'
+                  )}
+                </td>
+                <td>{staff.phone}</td>
+                <td>{staff.email}</td>
+                <td style={{ textAlign: 'center' }}>
+                  <div className="action-row" style={{ justifyContent: 'center' }}>
+                    <button onClick={() => handleEditClick(staff)} className="btn btn-warning btn-sm">
+                      ערוך
+                    </button>
+                    <button onClick={() => handleDelete(staff.id)} className="btn btn-danger btn-sm" title="הסר איש צוות">
+                      ✕
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <style>{`
-        @media (max-width: 600px) {
-          #staff-form {
-            grid-template-columns: 1fr; /* Stack form elements vertically */
-          }
-          #staff-form input, #staff-form select, #staff-form button {
-            width: 100%;
-            box-sizing: border-box; /* Include padding in width calculation */
-          }
-          #staff-table th, #staff-table td {
-            padding: 8px 5px; /* Reduce padding */
-            font-size: 12px; /* Smaller font size */
-          }
-          #staff-table button {
-            padding: 4px 8px;
-            font-size: 11px;
-          }
-          h2, h3 {
-            font-size: 1.2em;
-          }
-        }
-      `}</style>
     </div>
   );
 }
